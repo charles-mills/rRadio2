@@ -4,17 +4,35 @@ local activeMenu = nil
 -- Network handler for opening the menu
 net.Receive("rRadio_OpenInterface", function()
     local ent = net.ReadEntity()
-    if not IsValid(ent) then return end
+    print("[rRadio] Opening interface for entity:", tostring(ent))
+    
+    if not IsValid(ent) then 
+        print("[rRadio] Error: Invalid entity received")
+        return 
+    end
+    
+    -- Check if menu can open
+    if rRadio.Hooks.PreMenuOpen(ent) == false then
+        print("[rRadio] Menu opening prevented by hook")
+        return
+    end
     
     -- Remove existing menu if it exists
     if IsValid(activeMenu) then
+        if rRadio.Hooks.PreMenuClose(activeMenu) == false then
+            return
+        end
         activeMenu:Remove()
+        rRadio.Hooks.PostMenuClose(activeMenu)
         activeMenu = nil
     end
     
     -- Create new menu
     activeMenu = rRadio.UI.Create("Menu")
-    activeMenu.Entity = ent
+    activeMenu:SetEntity(ent)
+    
+    -- Call post-open hook
+    rRadio.Hooks.PostMenuOpen(ent, activeMenu)
 end)
 
 local MENU = {}
@@ -30,14 +48,23 @@ function MENU:Init()
     self:SetTitle("")
     self:MakePopup()
     
-    -- Track active components
+    -- Track active components and current view
     self.components = {}
+    self.currentView = "countries" -- Track current view for back button
     
     -- Create components
     self:CreateTitleBar()
     self:CreateSearchBar()
     self:CreateList()
     self:CreateControls()
+end
+
+function MENU:SetEntity(ent)
+    self.Entity = ent
+    -- Update entity reference in components
+    if self.components.list then
+        self.components.list.Entity = ent
+    end
 end
 
 function MENU:InitializeTheme()
@@ -59,6 +86,17 @@ function MENU:CreateTitleBar()
     header:DockMargin(10, 10, 10, 5)
     header.Paint = function() end
 
+    -- Back button (hidden by default)
+    self.backButton = vgui.Create("DImageButton", header)
+    self.backButton:SetSize(16, 16)
+    self.backButton:Dock(LEFT)
+    self.backButton:DockMargin(5, 12, 5, 12)
+    self.backButton:SetImage(rRadio.Config.UI.Icons.back)
+    self.backButton:SetVisible(false)
+    self.backButton.DoClick = function()
+        self:GoBack()
+    end
+
     -- Radio icon
     local icon = vgui.Create("DImage", header)
     icon:SetSize(24, 24)
@@ -75,35 +113,54 @@ function MENU:CreateTitleBar()
     title:SizeToContents()
     
     header.SetTitle = function(_, text)
-        title:SetText(rRadio.Utils.FormatName(text))
+        title:SetText(text)
         title:SizeToContents()
     end
 
-    local settings = vgui.Create("DImageButton", header)
-    settings:SetSize(16, 16)
-    settings:Dock(RIGHT)
-    settings:DockMargin(5, 12, 5, 12)
-    settings:SetImage(rRadio.Config.UI.Icons.settings)
-    settings.DoClick = function()
-        -- Show settings panel
+    -- Settings and close buttons
+    if LocalPlayer():IsAdmin() then
+        local settings = vgui.Create("DImageButton", header)
+        settings:SetSize(16, 16)
+        settings:Dock(RIGHT)
+        settings:DockMargin(5, 12, 5, 12)
+        settings:SetImage(rRadio.Config.UI.Icons.settings)
+        self:AddComponent("settings", settings)
     end
-    self:AddComponent("settings", settings)
 
-    -- Close button
     local close = vgui.Create("DImageButton", header)
     close:SetSize(16, 16)
     close:Dock(RIGHT)
     close:DockMargin(5, 12, 5, 12)
     close:SetImage(rRadio.Config.UI.Icons.close)
-    close.DoClick = function()
-        if IsValid(activeMenu) then
-            activeMenu:Remove()
-            activeMenu = nil
-        end
-    end
+    close.DoClick = function() self:Remove() end
     
     self:AddComponent("header", header)
-    return header
+end
+
+function MENU:GoBack()
+    if self.currentView == "stations" then
+        -- Reset search
+        if self.components.search then
+            self.components.search:SetText("")
+        end
+        
+        -- Update title and view
+        if self.components.header then
+            self.components.header:SetTitle("Select a Country")
+        end
+        
+        -- Hide back button
+        if IsValid(self.backButton) then
+            self.backButton:SetVisible(false)
+        end
+        
+        -- Show country list
+        if self.components.list then
+            self.components.list:LoadCountries()
+        end
+        
+        self.currentView = "countries"
+    end
 end
 
 function MENU:CreateSearchBar()
@@ -113,26 +170,26 @@ function MENU:CreateSearchBar()
     search:SetTall(30)
     search:SetFont(self:CreateScaledFont("Search", 16))
     search:SetPlaceholderText("Search...")
-    search.Paint = function(s, w, h)
-        draw.RoundedBox(6, 0, 0, w, h, self.themeColors.foreground)
-        s:DrawTextEntryText(
-            self.themeColors.text,
-            self:GetThemeColor("accent"),
-            self.themeColors.text
-        )
+    
+    -- Add search functionality
+    search.OnChange = function(s)
+        if self.components.list then
+            self.components.list:FilterItems(s:GetText())
+        end
     end
     
     self:AddComponent("search", search)
 end
 
 function MENU:CreateList()
-    print("[rRadio] Creating radio list") -- Debug
-    self.radioList = rRadio.UI.Create("RadioList", self)
-    self.radioList:Dock(FILL)
-    self.radioList:DockMargin(10, 5, 10, 5)
-    self.radioList.Entity = self.Entity -- Pass entity reference
+    local list = rRadio.UI.Create("RadioList", self)
+    list:Dock(FILL)
+    list:DockMargin(10, 5, 10, 5)
+    list.Entity = self.Entity -- Pass entity reference
     
-    self:AddComponent("list", self.radioList)
+    print("[rRadio] Creating list - Entity:", tostring(list.Entity))
+    
+    self:AddComponent("list", list)
 end
 
 function MENU:CreateControls()
@@ -178,14 +235,19 @@ function MENU:AddComponent(name, component)
 end
 
 function MENU:OnCountrySelected(country)
-    -- Update title immediately
+    -- Update title
     if self.components.header then
         self.components.header:SetTitle(country)
     end
     
-    -- Show loading state in controls
-    if self.components.controls then
-        self.components.controls:SetEnabled(false)
+    -- Show back button
+    if IsValid(self.backButton) then
+        self.backButton:SetVisible(true)
+    end
+    
+    -- Reset search
+    if self.components.search then
+        self.components.search:SetText("")
     end
     
     -- Load stations
@@ -193,12 +255,7 @@ function MENU:OnCountrySelected(country)
         self.components.list:LoadStations(country)
     end
     
-    -- Re-enable controls after loading
-    timer.Simple(0.1, function()
-        if IsValid(self) and self.components.controls then
-            self.components.controls:SetEnabled(true)
-        end
-    end)
+    self.currentView = "stations"
 end
 
 function MENU:OnStationSelected(name, url)
@@ -223,6 +280,16 @@ function MENU:OnStationSelected(name, url)
             end
         end
     end
+end
+
+-- In the menu's Remove function
+function MENU:Remove()
+    if rRadio.Hooks.PreMenuClose(self) == false then
+        return
+    end
+    
+    self.BaseClass.Remove(self)
+    rRadio.Hooks.PostMenuClose(self)
 end
 
 rRadio.UI.RegisterPanel("Menu", MENU, "rRadio_Frame")

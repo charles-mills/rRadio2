@@ -28,8 +28,17 @@ rRadio.ActiveStations = {
     
     -- Set or update a station
     SetStation = function(self, ent, data)
-        if not IsValid(ent) then return false end
-        if not data.name or not data.url then return false end
+        print(string.format("[rRadio] SetStation called - Entity: %s, Name: %s, URL: %s", 
+            tostring(ent), data.name, data.url))
+        
+        if not IsValid(ent) then 
+            print("[rRadio] SetStation failed - Invalid entity")
+            return false 
+        end
+        if not data.name or not data.url then 
+            print("[rRadio] SetStation failed - Invalid data")
+            return false 
+        end
         
         local entIndex = ent:EntIndex()
         
@@ -40,8 +49,10 @@ rRadio.ActiveStations = {
             url = data.url,
             volume = data.volume or 100,
             timestamp = CurTime(),
-            type = data.type or "entity"  -- entity or vehicle
+            type = data.type or "entity"
         }
+        
+        print(string.format("[rRadio] Station stored for entity %d", entIndex))
         
         -- Notify nearby players
         net.Start("rRadio_StreamUpdate")
@@ -52,7 +63,7 @@ rRadio.ActiveStations = {
             net.WriteFloat(data.volume or 100)
         net.SendPVS(ent:GetPos())
         
-        print(string.format("[rRadio] Set station for entity %d: %s", entIndex, data.name))
+        print(string.format("[rRadio] Stream update sent to PVS for entity %d", entIndex))
         return true
     end,
     
@@ -132,20 +143,33 @@ net.Receive("rRadio_SelectStation", function(len, ply)
     local name = net.ReadString()
     local url = net.ReadString()
     
-    if not IsValid(ent) then return end
-    if not (ent:GetClass() == "rradio_boombox" or ent:IsVehicle()) then return end
+    print(string.format("[rRadio] Received station selection from %s - Entity: %s, Name: %s, URL: %s",
+        ply:Nick(), tostring(ent), name, url))
+    
+    if not IsValid(ent) then 
+        print("[rRadio] Station selection failed - Invalid entity")
+        return 
+    end
+    if not (ent:GetClass() == "rradio_boombox" or ent:IsVehicle()) then 
+        print("[rRadio] Station selection failed - Invalid entity type:", ent:GetClass())
+        return 
+    end
     
     -- Check if stopping
     if name == "" and url == "" then
+        print("[rRadio] Stopping station for entity", tostring(ent))
         rRadio.ActiveStations:RemoveStation(ent)
         return
     end
     
     -- Set the station
-    rRadio.ActiveStations:SetStation(ent, {
+    local success = rRadio.ActiveStations:SetStation(ent, {
         name = name,
         url = url,
         volume = ent.GetVolume and ent:GetVolume() or 100,
         type = ent:IsVehicle() and "vehicle" or "entity"
     })
+    
+    print(string.format("[rRadio] Station selection %s for entity %s", 
+        success and "succeeded" or "failed", tostring(ent)))
 end) 

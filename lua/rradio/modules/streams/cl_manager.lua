@@ -58,6 +58,13 @@ rRadio.StreamManager = {
     CreateStream = function(self, data)
         if not data.url or not data.entity then return false end
         
+        -- Check if stream can start
+        if rRadio.Hooks.PreStreamStart(data.entity, data) == false then
+            return false
+        end
+        
+        print("[rRadio] Creating stream for", data.name)
+        
         -- Generate unique stream ID
         local streamID = data.entity:EntIndex()
         
@@ -76,12 +83,15 @@ rRadio.StreamManager = {
             falloff = data.falloff or GetConVar("rradio_falloff_default"):GetFloat(),
             lastUpdate = CurTime(),
             channel = nil,
-            type = data.type or "entity", -- entity/vehicle
+            type = data.type or "entity",
             metadata = data.metadata or {}
         }
         
         -- Start playback
         self:StartStream(streamID)
+        
+        -- Call post-start hook
+        rRadio.Hooks.PostStreamStart(data.entity, data)
         
         return streamID
     end,
@@ -91,6 +101,8 @@ rRadio.StreamManager = {
         local stream = self.Streams[streamID]
         if not stream then return false end
         
+        print("[rRadio] Starting stream", stream.name)
+
         sound.PlayURL(stream.url, "3d noblock", function(channel, errorID, errorName)
             if not IsValid(stream.entity) then 
                 self:CleanupStream(streamID)
@@ -105,15 +117,14 @@ rRadio.StreamManager = {
                 channel:SetPos(stream.position)
                 channel:Set3DFadeDistance(stream.range * 0.25, stream.range)
                 channel:SetVolume(stream.volume)
-                channel:EnableLooping(true)
                 
-                -- Call hook for successful stream start
+                print("[rRadio] Stream started successfully")
                 hook.Run("rRadio_StreamStarted", stream.entity, stream)
             else
                 stream.status = self.Status.ERROR
                 stream.error = {id = errorID, name = errorName}
                 
-                -- Call hook for stream error
+                print("[rRadio] Stream error:", errorName)
                 hook.Run("rRadio_StreamError", stream.entity, errorID, errorName)
             end
         end)
@@ -147,6 +158,11 @@ rRadio.StreamManager = {
         local stream = self.Streams[streamID]
         if not stream then return false end
         
+        -- Check if stream can stop
+        if rRadio.Hooks.PreStreamStop(stream.entity) == false then
+            return false
+        end
+        
         if IsValid(stream.channel) then
             stream.channel:Stop()
             stream.channel = nil
@@ -154,6 +170,10 @@ rRadio.StreamManager = {
         
         self.Streams[streamID] = nil
         hook.Run("rRadio_StreamStopped", stream.entity)
+        
+        -- Call post-stop hook
+        rRadio.Hooks.PostStreamStop(stream.entity)
+        
         return true
     end,
     
@@ -168,10 +188,16 @@ rRadio.StreamManager = {
     RegisterNetworking = function(self)
         net.Receive("rRadio_StreamUpdate", function()
             local ent = net.ReadEntity()
-            if not IsValid(ent) then return end
+            print("[rRadio] Received stream update for entity:", tostring(ent))
+            
+            if not IsValid(ent) then 
+                print("[rRadio] Stream update failed - Invalid entity")
+                return 
+            end
             
             local stop = net.ReadBool()
             if stop then
+                print("[rRadio] Stopping stream for entity:", tostring(ent))
                 self:CleanupStream(ent:EntIndex())
                 return
             end
@@ -182,11 +208,16 @@ rRadio.StreamManager = {
                 volume = net.ReadFloat()
             }
             
+            print(string.format("[rRadio] Stream data - Name: %s, URL: %s, Volume: %d",
+                data.name, data.url, data.volume))
+            
             -- Update existing stream or create new one
             local streamID = ent:EntIndex()
             if self.Streams[streamID] then
+                print("[rRadio] Updating existing stream:", streamID)
                 self:UpdateStream(streamID, data)
             else
+                print("[rRadio] Creating new stream:", streamID)
                 self:CreateStream({
                     entity = ent,
                     url = data.url,

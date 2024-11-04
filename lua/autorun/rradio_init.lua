@@ -18,6 +18,7 @@ end
 LoadFile("rradio/core/sh_config.lua", "sh")
 LoadFile("rradio/core/sh_utils.lua", "sh")
 LoadFile("rradio/core/sh_language.lua", "sh")
+LoadFile("rradio/core/cl_hooks.lua", "cl")
 
 -- Network strings (shared)
 if SERVER then

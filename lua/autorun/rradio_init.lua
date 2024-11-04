@@ -40,13 +40,14 @@ LoadFile("rradio/modules/sh_manager.lua", "sh")
 LoadFile("rradio/modules/vehicles/sh_radio.lua", "sh")
 
 if SERVER then
-    LoadFile("rradio/modules/sv_manager.lua", "sv")
+    LoadFile("rradio/modules/stations/sv_manager.lua", "sv")
     LoadFile("rradio/modules/ui/sv_admin.lua", "sv")
     
     -- Add client files to download
     local files = {
         "rradio/modules/ui/cl_theme.lua",
         "rradio/modules/streams/cl_manager.lua",
+        "rradio/modules/favorites/cl_favorites.lua",
         "rradio/modules/ui/panels/cl_menu.lua",
         "rradio/modules/ui/panels/cl_radiolist.lua"
     }
@@ -59,6 +60,7 @@ else
     LoadFile("rradio/modules/ui/cl_base.lua", "cl")
     LoadFile("rradio/modules/ui/cl_theme.lua", "cl")
     LoadFile("rradio/modules/streams/cl_manager.lua", "cl")
+    LoadFile("rradio/modules/favorites/cl_favorites.lua", "cl")
     
     -- Then load UI panels
     LoadFile("rradio/modules/ui/panels/cl_menu.lua", "cl")

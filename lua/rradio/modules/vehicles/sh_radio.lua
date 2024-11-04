@@ -21,6 +21,7 @@ rRadio.VehicleRadio = {
 
     IsValidVehicle = function(self, ent)
         if not IsValid(ent) then return false end
+        if not ent.GetClass or type(ent.GetClass) ~= "function" then return false end
         
         -- Check base vehicle class
         if self.ValidVehicles[ent:GetClass()] then return true end

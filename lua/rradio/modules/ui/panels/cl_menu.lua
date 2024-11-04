@@ -17,9 +17,7 @@ net.Receive("rRadio_OpenInterface", function()
     activeMenu.Entity = ent
 end)
 
-local MENU = {
-    baseClass = "rRadio_ThemeFrame"
-}
+local MENU = {}
 
 function MENU:Init()
     self.BaseClass.Init(self)
@@ -54,7 +52,7 @@ function MENU:Paint(w, h)
     draw.RoundedBox(8, 0, 0, w, h, self.themeColors.background)
 end
 
-function MENU:CreateHeader()
+function MENU:CreateTitleBar()
     local header = vgui.Create("DPanel", self)
     header:Dock(TOP)
     header:SetTall(40)
@@ -75,16 +73,21 @@ function MENU:CreateHeader()
     title:SetFont(self:CreateScaledFont("Title", 20))
     title:SetTextColor(self.themeColors.text)
     title:SizeToContents()
-
-    -- Settings button (admin only)
-    if LocalPlayer():IsAdmin() then
-        local settings = vgui.Create("DImageButton", header)
-        settings:SetSize(16, 16)
-        settings:Dock(RIGHT)
-        settings:DockMargin(5, 12, 5, 12)
-        settings:SetImage(rRadio.Config.UI.Icons.settings)
-        self:AddComponent("settings", settings)
+    
+    header.SetTitle = function(_, text)
+        title:SetText(rRadio.Utils.FormatName(text))
+        title:SizeToContents()
     end
+
+    local settings = vgui.Create("DImageButton", header)
+    settings:SetSize(16, 16)
+    settings:Dock(RIGHT)
+    settings:DockMargin(5, 12, 5, 12)
+    settings:SetImage(rRadio.Config.UI.Icons.settings)
+    settings.DoClick = function()
+        -- Show settings panel
+    end
+    self:AddComponent("settings", settings)
 
     -- Close button
     local close = vgui.Create("DImageButton", header)
@@ -92,12 +95,18 @@ function MENU:CreateHeader()
     close:Dock(RIGHT)
     close:DockMargin(5, 12, 5, 12)
     close:SetImage(rRadio.Config.UI.Icons.close)
-    close.DoClick = function() self:Remove() end
+    close.DoClick = function()
+        if IsValid(activeMenu) then
+            activeMenu:Remove()
+            activeMenu = nil
+        end
+    end
     
     self:AddComponent("header", header)
+    return header
 end
 
-function MENU:CreateSearch()
+function MENU:CreateSearchBar()
     local search = vgui.Create("DTextEntry", self)
     search:Dock(TOP)
     search:DockMargin(10, 5, 10, 5)
@@ -117,22 +126,13 @@ function MENU:CreateSearch()
 end
 
 function MENU:CreateList()
+    print("[rRadio] Creating radio list") -- Debug
     self.radioList = rRadio.UI.Create("RadioList", self)
     self.radioList:Dock(FILL)
     self.radioList:DockMargin(10, 5, 10, 5)
-    self.radioList:LoadCountries() -- Start with country list
+    self.radioList.Entity = self.Entity -- Pass entity reference
     
-    self:AddComponent("radioList", self.radioList)
-end
-
-function MENU:OnCountrySelected(country)
-    -- Update title
-    if self.components.titleBar then
-        self.components.titleBar:SetTitle(country)
-    end
-    
-    -- Load stations for country
-    self.radioList:LoadStations(country)
+    self:AddComponent("list", self.radioList)
 end
 
 function MENU:CreateControls()
@@ -173,12 +173,56 @@ function MENU:CreateControls()
     self:AddComponent("controls", controls)
 end
 
-rRadio.UI.RegisterThemePanel("Menu", MENU, {
-    setup = function(panel)
-        panel:SetDraggable(true)
-        panel:SetSizable(true)
-        panel:SetMinWidth(rRadio.Config.UI.MinWidth)
-        panel:SetMinHeight(rRadio.Config.UI.MinHeight)
-        panel.hookID = "rRadio_Menu_" .. tostring(panel)
+function MENU:AddComponent(name, component)
+    self.components[name] = component
+end
+
+function MENU:OnCountrySelected(country)
+    -- Update title immediately
+    if self.components.header then
+        self.components.header:SetTitle(country)
     end
-}) 
+    
+    -- Show loading state in controls
+    if self.components.controls then
+        self.components.controls:SetEnabled(false)
+    end
+    
+    -- Load stations
+    if self.components.list then
+        self.components.list:LoadStations(country)
+    end
+    
+    -- Re-enable controls after loading
+    timer.Simple(0.1, function()
+        if IsValid(self) and self.components.controls then
+            self.components.controls:SetEnabled(true)
+        end
+    end)
+end
+
+function MENU:OnStationSelected(name, url)
+    -- Update title
+    if self.components.header then
+        self.components.header:SetTitle(name)
+    end
+    
+    -- Enable controls
+    if self.components.controls then
+        self.components.controls:SetEnabled(true)
+        
+        -- Update stop button functionality
+        local stopBtn = self.components.controls:GetChild(0)  -- First child is stop button
+        if IsValid(stopBtn) then
+            stopBtn.DoClick = function()
+                net.Start("rRadio_SelectStation")
+                    net.WriteEntity(self.Entity)
+                    net.WriteString("")  -- Empty name indicates stop
+                    net.WriteString("")  -- Empty URL indicates stop
+                net.SendToServer()
+            end
+        end
+    end
+end
+
+rRadio.UI.RegisterPanel("Menu", MENU, "rRadio_Frame")

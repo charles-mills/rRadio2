@@ -2,71 +2,77 @@ rRadio.UI = rRadio.UI or {}
 rRadio.UI.Panels = rRadio.UI.Panels or {}
 
 -- Base Panel class
-local PANEL = {}
+local BASE = {}
 
-function PANEL:SetupAnimations()
-    -- Base animation setup
+function BASE:Init()
     self.animations = {}
     self.nextUpdate = 0
 end
 
-function PANEL:Init()
-    self:SetupAnimations()
-end
-
-function PANEL:ScaleToScreen()
+function BASE:ScaleToScreen()
     local w, h = self:GetSize()
     self:SetSize(rRadio.UI.ScaleW(w), rRadio.UI.ScaleH(h))
 end
 
-function PANEL:CreateScaledFont(name, size, weight)
+function BASE:CreateScaledFont(name, size, weight)
     return rRadio.UI.ScaleFont(name, size, weight)
 end
 
-function PANEL:GetThemeColor(key, alpha)
+function BASE:GetThemeColor(key, alpha)
     return rRadio.Theme:GetColor(key, alpha)
 end
 
-function PANEL:UpdateAnimations()
-    -- Override in child panels
-end
-
-function PANEL:Think()
-    if CurTime() < self.nextUpdate then return end
-    self.nextUpdate = CurTime() + rRadio.Config.UI.UpdateRate
-    
-    self:UpdateAnimations()
-end
-
-vgui.Register("rRadio_BasePanel", PANEL, "DPanel")
+vgui.Register("rRadio_BasePanel", BASE, "DPanel")
 
 -- Theme Panel class
-local THEME_PANEL = {}
-setmetatable(THEME_PANEL, {__index = PANEL})
+local THEME = table.Copy(BASE)
 
-function THEME_PANEL:Init()
-    PANEL.Init(self)
+function THEME:Init()
+    BASE.Init(self)
     self.themeColors = {}
     self:InitializeTheme()
 end
 
-function THEME_PANEL:InitializeTheme()
+function THEME:InitializeTheme()
     self.themeColors = {
         background = self:GetThemeColor("background"),
         text = self:GetThemeColor("text")
     }
 end
 
-vgui.Register("rRadio_ThemePanel", THEME_PANEL, "rRadio_BasePanel")
+vgui.Register("rRadio_ThemePanel", THEME, "rRadio_BasePanel")
 
 -- Theme Frame class
-local THEME_FRAME = table.Copy(THEME_PANEL)
+local FRAME = {}
 
-function THEME_FRAME:Init()
-    THEME_PANEL.Init(self)
+function FRAME:Init()
+    self.animations = {}
+    self.nextUpdate = 0
+    self.themeColors = {}
+    self:InitializeTheme()
 end
 
-vgui.Register("rRadio_ThemeFrame", THEME_FRAME, "DFrame")
+function FRAME:ScaleToScreen()
+    local w, h = self:GetSize()
+    self:SetSize(rRadio.UI.ScaleW(w), rRadio.UI.ScaleH(h))
+end
+
+function FRAME:CreateScaledFont(name, size, weight)
+    return rRadio.UI.ScaleFont(name, size, weight)
+end
+
+function FRAME:GetThemeColor(key, alpha)
+    return rRadio.Theme:GetColor(key, alpha)
+end
+
+function FRAME:InitializeTheme()
+    self.themeColors = {
+        background = self:GetThemeColor("background"),
+        text = self:GetThemeColor("text")
+    }
+end
+
+vgui.Register("rRadio_Frame", FRAME, "DFrame")
 
 -- UI Factory
 rRadio.UI.Create = function(panelType, parent)
@@ -76,26 +82,22 @@ rRadio.UI.Create = function(panelType, parent)
     end
     
     local panel = vgui.Create(rRadio.UI.Panels[panelType].base, parent)
-    if panel then
-        panel:SetupFromConfig(rRadio.UI.Panels[panelType].config)
-    end
     return panel
 end
 
 -- Panel Registration
-rRadio.UI.RegisterThemePanel = function(name, methods, config)
+rRadio.UI.RegisterPanel = function(name, methods, baseClass)
     local PANEL = table.Copy(methods)
-    local baseClass = methods.baseClass or "rRadio_ThemePanel"
+    local base = baseClass or "rRadio_ThemePanel"
     
-    -- Ensure proper inheritance
-    if not PANEL.BaseClass then
-        PANEL.BaseClass = _G[baseClass]
-    end
+    -- Set up inheritance
+    PANEL.Base = base
+    PANEL.BaseClass = _G[base]
     
+    -- Register the panel
     rRadio.UI.Panels[name] = {
-        base = "rRadio_" .. name,
-        config = config or {}
+        base = "rRadio_" .. name
     }
     
-    vgui.Register("rRadio_" .. name, PANEL, baseClass)
+    vgui.Register("rRadio_" .. name, PANEL, base)
 end

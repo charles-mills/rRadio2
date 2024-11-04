@@ -18,10 +18,42 @@ rRadio.StreamManager = {
         -- Register network handlers
         self:RegisterNetworking()
         
-        -- Register hooks
-        self:RegisterHooks()
+        -- Create position update timer
+        timer.Create("rRadio_StreamPositions", 0.1, 0, function()
+            for streamID, stream in pairs(self.Streams) do
+                if IsValid(stream.entity) then
+                    local newPos = stream.entity:GetPos()
+                    if newPos != stream.position then
+                        self:UpdateStream(streamID, {position = newPos})
+                    end
+                else
+                    self:CleanupStream(streamID)
+                end
+            end
+        end)
+
+        -- Create periodic cleanup timer
+        timer.Create("rRadio_StreamCleanup", 5, 0, function()
+            self:PerformCleanup()
+        end)
     end,
-    
+
+    PerformCleanup = function(self)
+        for streamID, stream in pairs(self.Streams) do
+            -- Check for invalid entities
+            if not IsValid(stream.entity) then
+                self:CleanupStream(streamID)
+                continue
+            end
+
+            -- Check for out-of-range streams
+            local dist = LocalPlayer():GetPos():DistToSqr(stream.position)
+            if dist > (stream.range * stream.range * 1.5) then -- 1.5x buffer
+                self:CleanupStream(streamID)
+            end
+        end
+    end,
+
     -- Create a new stream
     CreateStream = function(self, data)
         if not data.url or not data.entity then return false end
@@ -136,27 +168,34 @@ rRadio.StreamManager = {
     RegisterNetworking = function(self)
         net.Receive("rRadio_StreamUpdate", function()
             local ent = net.ReadEntity()
-            local data = net.ReadTable()
+            if not IsValid(ent) then return end
             
-            if IsValid(ent) then
-                local streamID = ent:EntIndex()
-                
-                if data.stop then
-                    self:CleanupStream(streamID)
-                else
-                    if self.Streams[streamID] then
-                        self:UpdateStream(streamID, data)
-                    else
-                        self:CreateStream({
-                            entity = ent,
-                            url = data.url,
-                            name = data.name,
-                            volume = data.volume,
-                            range = data.range,
-                            type = data.type
-                        })
-                    end
-                end
+            local stop = net.ReadBool()
+            if stop then
+                self:CleanupStream(ent:EntIndex())
+                return
+            end
+            
+            local data = {
+                name = net.ReadString(),
+                url = net.ReadString(),
+                volume = net.ReadFloat()
+            }
+            
+            -- Update existing stream or create new one
+            local streamID = ent:EntIndex()
+            if self.Streams[streamID] then
+                self:UpdateStream(streamID, data)
+            else
+                self:CreateStream({
+                    entity = ent,
+                    url = data.url,
+                    name = data.name,
+                    volume = data.volume,
+                    position = ent:GetPos(),
+                    range = ent:GetRange(),
+                    type = "entity"
+                })
             end
         end)
     end,
@@ -198,6 +237,12 @@ rRadio.StreamManager = {
     IsPlaying = function(self, entity)
         local stream = self:GetStreamByEntity(entity)
         return stream and stream.status == self.Status.PLAYING
+    end,
+
+    OnRemove = function(self)
+        timer.Remove("rRadio_StreamPositions")
+        timer.Remove("rRadio_StreamCleanup")
+        self:CleanupAllStreams()
     end
 }
 

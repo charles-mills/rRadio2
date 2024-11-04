@@ -1,4 +1,13 @@
 rRadio.Utils = {
+    -- String formatting
+    FormatName = function(str)
+        -- Remove underscores and convert to title case
+        str = str:gsub("_", " ")
+        return str:gsub("(%a)([%w_']*)", function(first, rest)
+            return first:upper() .. rest:lower()
+        end)
+    end,
+
     -- String utilities
     FormatTime = function(seconds)
         return string.format("%02d:%02d", math.floor(seconds/60), seconds%60)

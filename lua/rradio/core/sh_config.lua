@@ -43,14 +43,23 @@ rRadio.Config = {
         MinWidth = 400,  -- Minimum window dimensions
         MinHeight = 600,
         Icons = {
-            favorite = "rradio/hud/star.png",
-            favorite_filled = "rradio/hud/star_filled.png",
-            settings = "rradio/hud/settings.png",
-            close = "rradio/hud/close.png",
-            stop = "rradio/hud/stop.png",
-            volume = "rradio/hud/volume.png",
-            radio = "rradio/hud/radio.png"
+            favorite = "hud/star.png",
+            favorite_filled = "hud/star_full.png",
+            settings = "hud/settings.png",
+            close = "hud/close.png",
+            stop = "hud/stop.png",
+            volume = "hud/volume.png",
+            radio = "hud/radio.png"
         }
+    },
+
+    Cache = {
+        MaxSize = 50 * 1024 * 1024, -- 50MB max cache size
+        CleanupInterval = 300,       -- 5 minutes
+        MaxCountries = 50,           -- Max countries to keep in memory
+        MaxStationsPerCountry = 200, -- Max stations per country
+        HotDataThreshold = 5,        -- Access count to consider data "hot"
+        ColdDataThreshold = 300      -- Seconds before data is considered "cold"
     }
 }
 

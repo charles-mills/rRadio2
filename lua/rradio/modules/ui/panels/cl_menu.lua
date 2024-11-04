@@ -40,6 +40,19 @@ local MENU = {}
 function MENU:Init()
     self.BaseClass.Init(self)
     
+    -- Initialize theme colors
+    self.themeColors = {
+        background = rRadio.Theme:GetColor("background"),
+        foreground = rRadio.Theme:GetColor("foreground"),
+        header = rRadio.Theme:GetColor("header"),
+        item = rRadio.Theme:GetColor("item"),
+        item_hover = rRadio.Theme:GetColor("item_hover"),
+        text = rRadio.Theme:GetColor("text"),
+        accent = rRadio.Theme:GetColor("accent"),
+        error = rRadio.Theme:GetColor("error"),
+        favorite = rRadio.Theme:GetColor("favorite")
+    }
+    
     -- Set up window properties
     self:SetSize(400, 600)
     self:ScaleToScreen()
@@ -48,15 +61,23 @@ function MENU:Init()
     self:SetTitle("")
     self:MakePopup()
     
-    -- Track active components and current view
+    -- Track active components
     self.components = {}
-    self.currentView = "countries" -- Track current view for back button
     
     -- Create components
-    self:CreateTitleBar()
-    self:CreateSearchBar()
-    self:CreateList()
+    self:CreateHeader()
+    self:CreateSearch()
+    self:CreateRadioList()
     self:CreateControls()
+end
+
+function MENU:CreateRadioList()
+    local list = rRadio.UI.Create("RadioList", self)
+    list:Dock(FILL)
+    list:DockMargin(10, 5, 10, 5)
+    list.Entity = self.Entity
+    
+    self:AddComponent("list", list)
 end
 
 function MENU:SetEntity(ent)
@@ -79,79 +100,82 @@ function MENU:Paint(w, h)
     draw.RoundedBox(8, 0, 0, w, h, self.themeColors.background)
 end
 
-function MENU:CreateTitleBar()
+function MENU:CreateHeader()
     local header = vgui.Create("DPanel", self)
     header:Dock(TOP)
-    header:SetTall(40)
-    header:DockMargin(10, 10, 10, 5)
-    header.Paint = function() end
+    header:SetTall(50)
+    header.Paint = function(s, w, h)
+        draw.RoundedBoxEx(8, 0, 0, w, h, self.themeColors.header, true, true, false, false)
+    end
+
+    -- Radio icon and title
+    local title = vgui.Create("DPanel", header)
+    title:Dock(LEFT)
+    title:SetWide(200)
+    title:DockMargin(15, 0, 0, 0)
+    title.Paint = function(s, w, h)
+        surface.SetDrawColor(255, 255, 255)
+        surface.SetMaterial(rRadio.Utils.GetIcon("radio"))
+        surface.DrawTexturedRect(0, h/2-10, 20, 20)
+        
+        draw.SimpleText(self.currentTitle or "Select a Country", 
+            self:CreateScaledFont("Title", 20),
+            30, h/2, self.themeColors.text,
+            TEXT_ALIGN_LEFT, TEXT_ALIGN_CENTER)
+    end
+
+    -- Right-side buttons container
+    local btnContainer = vgui.Create("DPanel", header)
+    btnContainer:Dock(RIGHT)
+    btnContainer:SetWide(95) -- Increased width for back button
+    btnContainer:DockMargin(0, 0, 10, 0)
+    btnContainer.Paint = function() end
 
     -- Back button (hidden by default)
-    self.backButton = vgui.Create("DImageButton", header)
-    self.backButton:SetSize(16, 16)
+    self.backButton = vgui.Create("DImageButton", btnContainer)
+    self.backButton:SetSize(20, 20)
     self.backButton:Dock(LEFT)
-    self.backButton:DockMargin(5, 12, 5, 12)
-    self.backButton:SetImage(rRadio.Config.UI.Icons.back)
+    self.backButton:DockMargin(5, 15, 5, 15)
+    self.backButton:SetMaterial(rRadio.Utils.GetIcon("back"))
     self.backButton:SetVisible(false)
     self.backButton.DoClick = function()
         self:GoBack()
     end
 
-    -- Radio icon
-    local icon = vgui.Create("DImage", header)
-    icon:SetSize(24, 24)
-    icon:Dock(LEFT)
-    icon:DockMargin(5, 8, 5, 8)
-    icon:SetImage(rRadio.Config.UI.Icons.radio)
-
-    -- Title
-    local title = vgui.Create("DLabel", header)
-    title:Dock(LEFT)
-    title:SetText("Select a Country")
-    title:SetFont(self:CreateScaledFont("Title", 20))
-    title:SetTextColor(self.themeColors.text)
-    title:SizeToContents()
-    
-    header.SetTitle = function(_, text)
-        title:SetText(text)
-        title:SizeToContents()
-    end
-
-    -- Settings and close buttons
+    -- Settings button (admin only)
     if LocalPlayer():IsAdmin() then
-        local settings = vgui.Create("DImageButton", header)
-        settings:SetSize(16, 16)
-        settings:Dock(RIGHT)
-        settings:DockMargin(5, 12, 5, 12)
-        settings:SetImage(rRadio.Config.UI.Icons.settings)
-        self:AddComponent("settings", settings)
+        local settings = vgui.Create("DImageButton", btnContainer)
+        settings:SetSize(20, 20)
+        settings:Dock(LEFT)
+        settings:DockMargin(5, 15, 5, 15)
+        settings:SetMaterial(rRadio.Utils.GetIcon("settings"))
     end
 
-    local close = vgui.Create("DImageButton", header)
-    close:SetSize(16, 16)
+    -- Close button
+    local close = vgui.Create("DImageButton", btnContainer)
+    close:SetSize(20, 20)
     close:Dock(RIGHT)
-    close:DockMargin(5, 12, 5, 12)
-    close:SetImage(rRadio.Config.UI.Icons.close)
+    close:DockMargin(5, 15, 5, 15)
+    close:SetMaterial(rRadio.Utils.GetIcon("close"))
     close.DoClick = function() self:Remove() end
-    
+
     self:AddComponent("header", header)
+    return header
 end
 
 function MENU:GoBack()
     if self.currentView == "stations" then
-        -- Reset search
-        if self.components.search then
-            self.components.search:SetText("")
-        end
-        
-        -- Update title and view
-        if self.components.header then
-            self.components.header:SetTitle("Select a Country")
-        end
+        -- Update title
+        self.currentTitle = "Select a Country"
         
         -- Hide back button
         if IsValid(self.backButton) then
             self.backButton:SetVisible(false)
+        end
+        
+        -- Reset search
+        if self.components.search then
+            self.components.search:SetText("")
         end
         
         -- Show country list
@@ -163,82 +187,9 @@ function MENU:GoBack()
     end
 end
 
-function MENU:CreateSearchBar()
-    local search = vgui.Create("DTextEntry", self)
-    search:Dock(TOP)
-    search:DockMargin(10, 5, 10, 5)
-    search:SetTall(30)
-    search:SetFont(self:CreateScaledFont("Search", 16))
-    search:SetPlaceholderText("Search...")
-    
-    -- Add search functionality
-    search.OnChange = function(s)
-        if self.components.list then
-            self.components.list:FilterItems(s:GetText())
-        end
-    end
-    
-    self:AddComponent("search", search)
-end
-
-function MENU:CreateList()
-    local list = rRadio.UI.Create("RadioList", self)
-    list:Dock(FILL)
-    list:DockMargin(10, 5, 10, 5)
-    list.Entity = self.Entity -- Pass entity reference
-    
-    print("[rRadio] Creating list - Entity:", tostring(list.Entity))
-    
-    self:AddComponent("list", list)
-end
-
-function MENU:CreateControls()
-    local controls = vgui.Create("DPanel", self)
-    controls:Dock(BOTTOM)
-    controls:SetTall(50)
-    controls:DockMargin(10, 5, 10, 10)
-    controls.Paint = function() end
-
-    -- Stop button
-    local stop = vgui.Create("DButton", controls)
-    stop:Dock(LEFT)
-    stop:SetWide(80)
-    stop:SetText("STOP")
-    stop:SetFont(self:CreateScaledFont("Button", 16))
-    stop.Paint = function(s, w, h)
-        local color = s:IsHovered() and self:GetThemeColor("error") or self:GetThemeColor("item")
-        draw.RoundedBox(6, 0, 0, w, h, color)
-    end
-
-    -- Volume icon
-    local volIcon = vgui.Create("DImage", controls)
-    volIcon:SetSize(24, 24)
-    volIcon:Dock(LEFT)
-    volIcon:DockMargin(10, 13, 5, 13)
-    volIcon:SetImage(rRadio.Config.UI.Icons.volume)
-
-    -- Volume slider
-    local volume = vgui.Create("DSlider", controls)
-    volume:Dock(FILL)
-    volume:DockMargin(5, 15, 0, 15)
-    volume:SetSlideX(0.75)
-    volume.Paint = function(s, w, h)
-        draw.RoundedBox(2, 0, h/2-1, w, 2, self:GetThemeColor("item"))
-        draw.RoundedBox(2, 0, h/2-1, w * s:GetSlideX(), 2, self:GetThemeColor("accent"))
-    end
-    
-    self:AddComponent("controls", controls)
-end
-
-function MENU:AddComponent(name, component)
-    self.components[name] = component
-end
-
 function MENU:OnCountrySelected(country)
     -- Update title
-    if self.components.header then
-        self.components.header:SetTitle(country)
-    end
+    self.currentTitle = rRadio.Utils.FormatCountryName(country)
     
     -- Show back button
     if IsValid(self.backButton) then
@@ -256,6 +207,61 @@ function MENU:OnCountrySelected(country)
     end
     
     self.currentView = "stations"
+end
+
+function MENU:CreateSearch()
+    local search = vgui.Create("DTextEntry", self)
+    search:Dock(TOP)
+    search:DockMargin(15, 15, 15, 10)
+    search:SetTall(35)
+    search:SetFont(self:CreateScaledFont("Item", 16))
+    search:SetPlaceholderText("Search...")
+    search:SetTextColor(self.themeColors.text)
+    search.Paint = function(s, w, h)
+        draw.RoundedBox(6, 0, 0, w, h, self.themeColors.item)
+        s:DrawTextEntryText(
+            self.themeColors.text,
+            self.themeColors.accent,
+            self.themeColors.text
+        )
+    end
+end
+
+function MENU:CreateControls()
+    local controls = vgui.Create("DPanel", self)
+    controls:Dock(BOTTOM)
+    controls:SetTall(60)
+    controls:DockMargin(15, 5, 15, 15)
+    controls.Paint = function() end
+
+    -- Stop button
+    local stop = vgui.Create("DButton", controls)
+    stop:Dock(LEFT)
+    stop:SetWide(80)
+    stop:SetText("STOP")
+    stop:SetFont(self:CreateScaledFont("Button", 16))
+    stop.Paint = function(s, w, h)
+        draw.RoundedBox(6, 0, 0, w, h, 
+            s:IsHovered() and self.themeColors.error or self.themeColors.item)
+    end
+
+    -- Volume control
+    local volume = vgui.Create("DPanel", controls)
+    volume:Dock(FILL)
+    volume:DockMargin(15, 0, 0, 0)
+    volume.Paint = function(s, w, h)
+        surface.SetDrawColor(255, 255, 255)
+        surface.SetMaterial(rRadio.Utils.GetIcon("volume"))
+        surface.DrawTexturedRect(0, h/2-10, 20, 20)
+        
+        local sliderWidth = w - 35
+        draw.RoundedBox(4, 30, h/2-2, sliderWidth, 4, self.themeColors.item)
+        draw.RoundedBox(4, 30, h/2-2, sliderWidth * 0.75, 4, self.themeColors.accent)
+    end
+end
+
+function MENU:AddComponent(name, component)
+    self.components[name] = component
 end
 
 function MENU:OnStationSelected(name, url)

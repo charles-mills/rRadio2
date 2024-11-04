@@ -46,6 +46,7 @@ if SERVER then
     
     -- Add client files to download
     local files = {
+        "rradio/modules/ui/cl_base.lua",
         "rradio/modules/ui/cl_theme.lua",
         "rradio/modules/streams/cl_manager.lua",
         "rradio/modules/favorites/cl_favorites.lua",
@@ -64,6 +65,6 @@ else
     LoadFile("rradio/modules/favorites/cl_favorites.lua", "cl")
     
     -- Then load UI panels
-    LoadFile("rradio/modules/ui/panels/cl_menu.lua", "cl")
     LoadFile("rradio/modules/ui/panels/cl_radiolist.lua", "cl")
+    LoadFile("rradio/modules/ui/panels/cl_menu.lua", "cl")
 end 

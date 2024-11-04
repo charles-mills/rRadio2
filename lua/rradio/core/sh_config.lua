@@ -43,13 +43,31 @@ rRadio.Config = {
         MinWidth = 400,  -- Minimum window dimensions
         MinHeight = 600,
         Icons = {
-            favorite = "hud/star.png",
-            favorite_filled = "hud/star_full.png",
-            settings = "hud/settings.png",
-            close = "hud/close.png",
-            stop = "hud/stop.png",
-            volume = "hud/volume.png",
-            radio = "hud/radio.png"
+            back = "rradio/icons/back.png",
+            close = "rradio/icons/close.png",
+            settings = "rradio/icons/settings.png",
+            radio = "rradio/icons/radio.png",
+            favorite = "rradio/icons/star.png",
+            favorite_filled = "rradio/icons/star_filled.png",
+            volume = "rradio/icons/volume.png",
+            stop = "rradio/icons/stop.png"
+        },
+        Fonts = {
+            Title = {
+                font = "Roboto",
+                size = 24,
+                weight = 500
+            },
+            Item = {
+                font = "Roboto",
+                size = 18,
+                weight = 400
+            },
+            Button = {
+                font = "Roboto",
+                size = 16,
+                weight = 500
+            }
         }
     },
 
@@ -62,6 +80,13 @@ rRadio.Config = {
         ColdDataThreshold = 300      -- Seconds before data is considered "cold"
     }
 }
+
+-- Add icons to download table
+if SERVER then
+    for _, path in pairs(rRadio.Config.UI.Icons) do
+        resource.AddFile("materials/" .. path)
+    end
+end
 
 rRadio.Hooks = {}
 

@@ -6,11 +6,15 @@ function RADIO_LIST:Init()
     -- Initialize theme colors
     self.themeColors = {
         background = self:GetThemeColor("background"),
+        foreground = self:GetThemeColor("foreground"),
+        header = self:GetThemeColor("header"),
         item = self:GetThemeColor("item"),
-        itemHover = self:GetThemeColor("item_hover"),
+        item_hover = self:GetThemeColor("item_hover"),
         text = self:GetThemeColor("text"),
         accent = self:GetThemeColor("accent"),
-        favorite = self:GetThemeColor("favorite")
+        error = self:GetThemeColor("error"),
+        favorite = self:GetThemeColor("favorite"),
+        separator = self:GetThemeColor("separator")
     }
     
     -- Create scrollable container
@@ -18,35 +22,51 @@ function RADIO_LIST:Init()
     self.scroll:Dock(FILL)
     self.scroll:DockMargin(0, 0, 4, 0)
     
+    -- Create list container
+    self.listContainer = vgui.Create("DListLayout", self.scroll)
+    self.listContainer:Dock(TOP)
+    self.listContainer:DockMargin(15, 5, 15, 5)
+    self.listContainer.Paint = function() end
+    
     -- Style scrollbar
     local sbar = self.scroll:GetVBar()
     sbar:SetWide(4)
     sbar:SetHideButtons(true)
     sbar:DockMargin(2, 2, 2, 2)
     
-    sbar.Paint = function(_, w, h)
-        draw.RoundedBox(2, 0, 0, w, h, self.themeColors.background)
-    end
-    
+    sbar.Paint = function() end
     sbar.btnGrip.Paint = function(_, w, h)
         draw.RoundedBox(2, 0, 0, w, h, self.themeColors.accent)
     end
-
-    -- Create list container
-    self.listContainer = vgui.Create("DListLayout", self.scroll)
-    self.listContainer:Dock(TOP)
-    self.listContainer:DockMargin(5, 5, 5, 5)
-    self.listContainer.Paint = function() end
-
-    -- Track active items
+    
+    -- Track active items for cleanup
     self.activeItems = {}
-
-    -- Start with country list
+    self.cleanupTimer = "rRadio_ListCleanup_" .. tostring({})
+    
+    -- Load countries immediately
     self:LoadCountries()
 end
 
-function RADIO_LIST:CleanupPanels()
-    -- Remove all active items
+function RADIO_LIST:PerformLayout(w, h)
+    if IsValid(self.listContainer) then
+        self.listContainer:SetWide(w - 8) -- Account for scrollbar
+    end
+end
+
+function RADIO_LIST:OnRemove()
+    if timer.Exists(self.cleanupTimer) then
+        timer.Remove(self.cleanupTimer)
+    end
+    self:CleanupItems()
+end
+
+function RADIO_LIST:CleanupItems()
+    -- Remove timer if it exists
+    if timer.Exists(self.cleanupTimer) then
+        timer.Remove(self.cleanupTimer)
+    end
+
+    -- Clean up active items
     for _, item in pairs(self.activeItems) do
         if IsValid(item) then
             item:Remove()
@@ -63,216 +83,238 @@ function RADIO_LIST:CleanupPanels()
     collectgarbage("collect")
 end
 
-function RADIO_LIST:OnRemove()
-    self:CleanupPanels()
-    if self.BaseClass.OnRemove then
-        self.BaseClass.OnRemove(self)
-    end
-end
-
-function RADIO_LIST:CreateListItems(items, batchSize)
-    batchSize = batchSize or 50
-    local currentBatch = 0
-    
-    local function createNextBatch()
-        local endIndex = math.min(currentBatch + batchSize, #items)
-        
-        for i = currentBatch + 1, endIndex do
-            if not IsValid(self) then return end
-            
-            local item = self:CreateListItem(items[i])
-            if IsValid(item) then
-                table.insert(self.activeItems, item)
-            end
-        end
-        
-        currentBatch = endIndex
-        
-        -- Continue with next batch if needed
-        if currentBatch < #items then
-            timer.Simple(0, createNextBatch)
-        else
-            -- Final layout update
-            timer.Simple(0.1, function()
-                if IsValid(self) and IsValid(self.listContainer) then
-                    self.listContainer:InvalidateLayout(true)
-                    self.scroll:InvalidateLayout(true)
-                end
-            end)
-        end
-    end
-    
-    -- Start first batch
-    createNextBatch()
-end
-
 function RADIO_LIST:LoadCountries()
-    print("[rRadio] RadioList: Loading countries...")
+    -- Clean up existing items first
+    self:CleanupItems()
+    
     self.mode = "country"
     
-    -- Cleanup existing panels
-    self:CleanupPanels()
+    -- Get and sort countries
+    local countries = {}
+    for countryCode, countryData in pairs(rRadio.StationManager.Data.Countries) do
+        table.insert(countries, {
+            code = countryCode,
+            name = countryCode,
+            displayName = rRadio.Utils.FormatCountryName(countryCode)
+        })
+    end
     
-    -- Prepare items to create
+    table.sort(countries, function(a, b)
+        return a.displayName < b.displayName
+    end)
+    
+    -- Create items in batches to prevent stack overflow
     local itemsToCreate = {}
     
     -- Add favorites section
     if #rRadio.Favorites.Countries > 0 then
         table.insert(itemsToCreate, {
-            name = "Favorite Countries",
+            name = "Favorite Stations",
+            displayName = "Favorite Stations",
             isHeader = true,
             favorite = true
         })
         
-        for _, country in ipairs(rRadio.Favorites.Countries) do
+        for _, countryCode in ipairs(rRadio.Favorites.Countries) do
             table.insert(itemsToCreate, {
-                name = country,
+                name = countryCode,
+                code = countryCode,
+                displayName = rRadio.Utils.FormatCountryName(countryCode),
                 favorite = true
             })
         end
     end
     
     -- Add regular countries
-    local countries = {}
-    for countryCode, _ in pairs(rRadio.StationManager.Data.Countries) do
-        table.insert(countries, countryCode)
-    end
-    table.sort(countries)
-    
-    for _, countryCode in ipairs(countries) do
-        if not rRadio.Favorites:IsCountryFavorite(countryCode) then
+    for _, country in ipairs(countries) do
+        if not rRadio.Favorites:IsCountryFavorite(country.code) then
             table.insert(itemsToCreate, {
-                name = countryCode,
+                name = country.code,
+                code = country.code,
+                displayName = country.displayName,
                 favorite = false
             })
         end
     end
     
     -- Create items in batches
-    self:CreateListItems(itemsToCreate)
+    local batchSize = 20
+    local currentBatch = 0
+    
+    timer.Create(self.cleanupTimer, 0, math.ceil(#itemsToCreate / batchSize), function()
+        if not IsValid(self) then 
+            timer.Remove(self.cleanupTimer)
+            return 
+        end
+        
+        local startIndex = currentBatch * batchSize + 1
+        local endIndex = math.min(startIndex + batchSize - 1, #itemsToCreate)
+        
+        for i = startIndex, endIndex do
+            local item = self:CreateListItem(itemsToCreate[i])
+            if IsValid(item) then
+                table.insert(self.activeItems, item)
+            end
+        end
+        
+        currentBatch = currentBatch + 1
+    end)
 end
 
 function RADIO_LIST:LoadStations(country)
-    print("[rRadio] RadioList: Loading stations for", country)
-    self.mode = "station"
+    -- Clean up existing items first
+    self:CleanupItems()
     
-    -- Cleanup existing panels
-    self:CleanupPanels()
+    self.mode = "station"
     
     local stations = rRadio.StationManager:GetCountryStations(country)
     if not stations then return end
     
-    -- Prepare items to create
+    -- Create items in batches
     local itemsToCreate = {}
     for _, station in ipairs(stations) do
         if station.name and station.url then
             table.insert(itemsToCreate, {
                 name = station.name,
+                displayName = station.name,
                 url = station.url,
                 favorite = rRadio.Favorites:IsStationFavorite(station.url)
             })
         end
     end
     
-    -- Create items in batches
-    self:CreateListItems(itemsToCreate)
-end
-
-function RADIO_LIST:SetEntity(ent)
-    self.Entity = ent
-    print("[rRadio] RadioList SetEntity:", tostring(self.Entity))
-end
-
-function RADIO_LIST:FilterItems(searchText)
-    searchText = string.lower(searchText or "")
+    -- Sort stations
+    table.sort(itemsToCreate, function(a, b)
+        return a.displayName < b.displayName
+    end)
     
-    -- If search is empty, show all items
-    if searchText == "" then
-        for _, item in pairs(self.activeItems) do
+    -- Create items in batches
+    local batchSize = 20
+    local currentBatch = 0
+    
+    timer.Create(self.cleanupTimer, 0, math.ceil(#itemsToCreate / batchSize), function()
+        if not IsValid(self) then 
+            timer.Remove(self.cleanupTimer)
+            return 
+        end
+        
+        local startIndex = currentBatch * batchSize + 1
+        local endIndex = math.min(startIndex + batchSize - 1, #itemsToCreate)
+        
+        for i = startIndex, endIndex do
+            local item = self:CreateListItem(itemsToCreate[i])
             if IsValid(item) then
-                item:SetVisible(true)
+                table.insert(self.activeItems, item)
             end
         end
-        self.listContainer:InvalidateLayout()
-        return
-    end
-    
-    -- Filter items based on search text
-    for _, item in pairs(self.activeItems) do
-        if IsValid(item) then
-            local name = string.lower(item.displayName or "")
-            local visible = string.find(name, searchText, 1, true)
-            item:SetVisible(visible)
-        end
-    end
-    
-    -- Update layout
-    self.listContainer:InvalidateLayout()
+        
+        currentBatch = currentBatch + 1
+    end)
 end
 
 function RADIO_LIST:CreateListItem(data)
     local item = vgui.Create("DButton", self.listContainer)
     item:Dock(TOP)
-    item:SetTall(40)
+    item:SetTall(45)
     item:DockMargin(0, 0, 0, 2)
     item:SetText("")
+    item:SetCursor("hand")
     
-    -- Store data and display name for searching
+    -- Store data
     item.data = data
-    item.displayName = data.isHeader and data.name or rRadio.Utils.FormatName(data.name)
+    item.displayName = data.displayName or data.name
+    item.alpha = 0
+    item.targetAlpha = 0
+    
+    -- Hover animation
+    item.Think = function(s)
+        if s:IsHovered() then
+            s.targetAlpha = 1
+        else
+            s.targetAlpha = 0
+        end
+        
+        s.alpha = Lerp(FrameTime() * 8, s.alpha, s.targetAlpha)
+    end
     
     item.Paint = function(s, w, h)
+        if data.isSeparator then
+            draw.RoundedBox(0, 10, h/2-1, w-20, 2, self.themeColors.separator)
+            return
+        end
+        
         -- Background with hover effect
-        local bgColor = s:IsHovered() and self.themeColors.itemHover or self.themeColors.item
+        local bgColor = self.themeColors.item
+        if s:IsHovered() then
+            bgColor = rRadio.Utils.LerpColor(s.alpha, self.themeColors.item, self.themeColors.item_hover)
+        end
         draw.RoundedBox(6, 0, 0, w, h, bgColor)
         
-        -- Star icon
-        surface.SetDrawColor(255, 255, 255, data.favorite and 255 or 100)
-        surface.SetMaterial(Material(data.favorite and 
-            rRadio.Config.UI.Icons.favorite_filled or 
-            rRadio.Config.UI.Icons.favorite))
+        if data.isHeader then
+            -- Header style
+            draw.SimpleText(item.displayName, 
+                self:CreateScaledFont("Title", 16, 600),
+                10, h/2, self.themeColors.text_dark,
+                TEXT_ALIGN_LEFT, TEXT_ALIGN_CENTER)
+            return
+        end
+        
+        -- Star icon with fade effect
+        local starAlpha = data.favorite and 255 or (s:IsHovered() and 100 or 50)
+        surface.SetDrawColor(255, 255, 255, starAlpha)
+        surface.SetMaterial(data.favorite and 
+            rRadio.Utils.GetIcon("favorite_filled") or 
+            rRadio.Utils.GetIcon("favorite"))
         surface.DrawTexturedRect(10, h/2-8, 16, 16)
         
-        -- Name
+        -- Name with proper font and color
         draw.SimpleText(item.displayName, 
             self:CreateScaledFont("Item", 16),
-            40, h/2, self.themeColors.text,
+            40, h/2, 
+            data.favorite and self.themeColors.favorite or self.themeColors.text,
             TEXT_ALIGN_LEFT, TEXT_ALIGN_CENTER)
     end
     
     -- Handle clicking
-    item.DoClick = function()
+    item.DoClick = function(s)
+        if s.data.isHeader or s.data.isSeparator then return end
+        
+        if input.IsMouseDown(MOUSE_RIGHT) then
+            s.data.favorite = not s.data.favorite
+            if self.mode == "country" then
+                rRadio.Favorites:ToggleCountry(s.data.code or s.data.name)
+            else
+                rRadio.Favorites:ToggleStation(s.data.name, s.data.url)
+            end
+            return
+        end
+        
         if self.mode == "country" then
             if self:GetParent() and self:GetParent().OnCountrySelected then
-                print("[rRadio] Selected country:", data.name)
-                self:GetParent():OnCountrySelected(data.name)
+                self:GetParent():OnCountrySelected(s.data.code or s.data.name)
             end
         else
-            if data.url then
-                print("[rRadio] Attempting to play station:", data.name, data.url)
-                print("[rRadio] RadioList Entity:", tostring(self.Entity))
-                print("[rRadio] Parent Entity:", tostring(self:GetParent().Entity))
-                
+            if s.data.url then
                 local targetEntity = self.Entity or self:GetParent().Entity
+                if not IsValid(targetEntity) then return end
                 
-                if not IsValid(targetEntity) then
-                    print("[rRadio] Error: Invalid entity reference")
-                    return
-                end
-                
-                -- Send station selection to server
                 net.Start("rRadio_SelectStation")
                     net.WriteEntity(targetEntity)
-                    net.WriteString(data.name)
-                    net.WriteString(data.url)
+                    net.WriteString(s.data.name)
+                    net.WriteString(s.data.url)
                 net.SendToServer()
-                
-                print("[rRadio] Sent station selection to server for entity:", tostring(targetEntity))
             end
         end
     end
     
     return item
+end
+
+function RADIO_LIST:OnCountrySelected(country)
+    print("[rRadio] Country selected:", country)
+    if self:GetParent() and self:GetParent().OnCountrySelected then
+        self:GetParent():OnCountrySelected(country)
+    end
 end
 
 rRadio.UI.RegisterPanel("RadioList", RADIO_LIST, "rRadio_ThemePanel")

@@ -17,6 +17,8 @@ rRadio.Favorites = {
                 self.Stations = saved.stations or {}
             end
         end
+        
+        print("[rRadio] Loaded", #self.Countries, "favorite countries and", #self.Stations, "favorite stations")
     end,
     
     Save = function(self)

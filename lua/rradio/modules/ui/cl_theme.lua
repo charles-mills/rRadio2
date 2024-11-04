@@ -50,7 +50,10 @@ rRadio.Theme = {
         if not theme then return color_white end
         
         local col = theme.colors[key]
-        if not col then return color_white end
+        if not col then 
+            print("[rRadio] Warning: Missing theme color", key)
+            return color_white 
+        end
         
         if alpha then
             return Color(col.r, col.g, col.b, alpha)
@@ -100,16 +103,18 @@ rRadio.Theme = {
             author = "rRadio",
             description = "Default dark theme",
             colors = {
-                background = Color(20, 20, 20, 245),
-                foreground = Color(30, 30, 30, 245),
-                item = Color(35, 35, 35, 245),
-                item_hover = Color(45, 45, 45, 245),
+                background = Color(13, 13, 13, 250),
+                foreground = Color(18, 18, 18, 250),
+                header = Color(15, 15, 15, 250),
+                item = Color(24, 24, 24, 250),
+                item_hover = Color(32, 32, 32, 250),
                 accent = Color(65, 105, 225),
                 text = Color(255, 255, 255),
                 text_dark = Color(180, 180, 180),
                 success = Color(46, 204, 113),
                 error = Color(231, 76, 60),
-                favorite = Color(255, 215, 0)
+                favorite = Color(255, 215, 0),
+                separator = Color(40, 40, 40)
             }
         })
 
@@ -119,6 +124,7 @@ rRadio.Theme = {
             colors = {
                 background = Color(240, 240, 240, 245),
                 foreground = Color(230, 230, 230, 245),
+                header = Color(220, 220, 220, 245),
                 item = Color(220, 220, 220, 245),
                 item_hover = Color(210, 210, 210, 245),
                 accent = Color(65, 105, 225),
@@ -136,6 +142,7 @@ rRadio.Theme = {
             colors = {
                 background = Color(13, 17, 23, 245),
                 foreground = Color(22, 27, 34, 245),
+                header = Color(22, 27, 34, 245),
                 item = Color(33, 38, 45, 245),
                 item_hover = Color(48, 54, 61, 245),
                 accent = Color(88, 166, 255),
